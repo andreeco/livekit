@@ -18,6 +18,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -40,13 +42,11 @@ import (
 )
 
 const (
-	testApiKey        = "apikey"
-	testApiSecret     = "apiSecretExtendTo32BytesAsThatIsMinimum"
-	testRoom          = "mytestroom"
-	defaultServerPort = 7880
-	secondServerPort  = 8880
-	nodeID1           = "node-1"
-	nodeID2           = "node-2"
+	testApiKey    = "apikey"
+	testApiSecret = "apiSecretExtendTo32BytesAsThatIsMinimum"
+	testRoom      = "mytestroom"
+	nodeID1       = "node-1"
+	nodeID2       = "node-2"
 
 	syncDelay = 100 * time.Millisecond
 	// if there are deadlocks, it's helpful to set a short test timeout (i.e. go test -timeout=30s)
@@ -54,7 +54,23 @@ const (
 	// connectTimeout = 5000 * time.Second
 )
 
-var roomClient livekit.RoomService
+var (
+	defaultServerPort = intFromEnvOrDefault("LK_TEST_SERVER_PORT", 7880)
+	secondServerPort  = intFromEnvOrDefault("LK_TEST_SERVER_PORT_SECOND", 8880)
+	roomClient        livekit.RoomService
+)
+
+func intFromEnvOrDefault(name string, fallback int) int {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
 
 func init() {
 	config.InitLoggerFromConfig(&config.DefaultConfig.Logging)
@@ -173,6 +189,9 @@ func createSingleNodeServer(configUpdater func(*config.Config)) *service.Livekit
 	if err != nil {
 		panic(fmt.Sprintf("could not create config: %v", err))
 	}
+	conf.Port = uint32(defaultServerPort)
+	conf.RTC.UDPPort = rtcconfig.PortRange{Start: defaultServerPort + 1}
+	conf.RTC.TCPPort = uint32(defaultServerPort + 2)
 	conf.Keys = map[string]string{testApiKey: testApiSecret}
 	conf.EnableDataTracks = true
 	if configUpdater != nil {
@@ -194,15 +213,15 @@ func createSingleNodeServer(configUpdater func(*config.Config)) *service.Livekit
 	return s
 }
 
-func createMultiNodeServer(nodeID string, port uint32, configUpdater func(*config.Config)) *service.LivekitServer {
+func createMultiNodeServer(nodeID string, port int, configUpdater func(*config.Config)) *service.LivekitServer {
 	var err error
 	conf, err := config.NewConfig("", true, nil, nil)
 	if err != nil {
 		panic(fmt.Sprintf("could not create config: %v", err))
 	}
-	conf.Port = port
-	conf.RTC.UDPPort = rtcconfig.PortRange{Start: int(port) + 1}
-	conf.RTC.TCPPort = port + 2
+	conf.Port = uint32(port)
+	conf.RTC.UDPPort = rtcconfig.PortRange{Start: port + 1}
+	conf.RTC.TCPPort = uint32(port + 2)
 	conf.Redis.Address = "localhost:6379"
 	conf.Keys = map[string]string{testApiKey: testApiSecret}
 	conf.EnableDataTracks = true

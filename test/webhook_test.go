@@ -26,6 +26,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/livekit/mediatransportutil/pkg/rtcconfig"
 	"github.com/livekit/protocol/auth"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -128,11 +129,15 @@ func setupServerWithWebhook() (server *service.LivekitServer, testServer *webhoo
 	if err != nil {
 		panic(fmt.Sprintf("could not create config: %v", err))
 	}
-	conf.WebHook.URLs = []string{"http://localhost:7890"}
+	webhookPort := intFromEnvOrDefault("LK_TEST_WEBHOOK_PORT", 7890)
+	conf.Port = uint32(defaultServerPort)
+	conf.RTC.UDPPort = rtcconfig.PortRange{Start: defaultServerPort + 1}
+	conf.RTC.TCPPort = uint32(defaultServerPort + 2)
+	conf.WebHook.URLs = []string{fmt.Sprintf("http://localhost:%d", webhookPort)}
 	conf.WebHook.APIKey = testApiKey
 	conf.Keys = map[string]string{testApiKey: testApiSecret}
 
-	testServer = newTestServer(":7890")
+	testServer = newTestServer(fmt.Sprintf(":%d", webhookPort))
 	if err = testServer.Start(); err != nil {
 		return
 	}

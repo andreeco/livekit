@@ -44,7 +44,7 @@ type agentClient struct {
 	done chan struct{}
 }
 
-func newAgentClient(token string, port uint32) (*agentClient, error) {
+func newAgentClient(token string, port int) (*agentClient, error) {
 	host := fmt.Sprintf("ws://localhost:%d", port)
 	u, err := url.Parse(host + "/agent")
 	if err != nil {

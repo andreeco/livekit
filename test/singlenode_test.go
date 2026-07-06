@@ -1368,9 +1368,10 @@ func TestTurnRelay(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			turnUDPPort := intFromEnvOrDefault("LK_TEST_TURN_UDP_PORT", 3478)
 			s := createSingleNodeServer(func(c *config.Config) {
 				c.TURN.Enabled = true
-				c.TURN.UDPPort = 3478
+				c.TURN.UDPPort = turnUDPPort
 				c.TURN.AllowRestrictedPeerCIDRs = tc.allowRestrictedPeerCIDRs
 				c.TURN.DenyPeerCIDRs = tc.denyPeerCIDRs
 			})
@@ -1411,7 +1412,7 @@ func TestTurnAuthFailure(t *testing.T) {
 		return
 	}
 
-	const turnUDPPort = 3478
+	turnUDPPort := intFromEnvOrDefault("LK_TEST_TURN_UDP_PORT", 3478)
 
 	s := createSingleNodeServer(func(c *config.Config) {
 		c.TURN.Enabled = true
