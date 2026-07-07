@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,6 +71,25 @@ func intFromEnvOrDefault(name string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func stringSliceFromEnvOrDefault(name string, fallback []string) []string {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return fallback
+	}
+	return values
 }
 
 func init() {

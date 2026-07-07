@@ -1340,6 +1340,11 @@ func TestTurnRelay(t *testing.T) {
 		return
 	}
 
+	restrictedPeerCIDRs := stringSliceFromEnvOrDefault(
+		"LK_TEST_TURN_RESTRICTED_PEER_CIDRS",
+		[]string{"10.0.0.0/8", "192.168.0.0/16"},
+	)
+
 	testCases := []struct {
 		name                     string
 		allowRestrictedPeerCIDRs []string
@@ -1348,7 +1353,7 @@ func TestTurnRelay(t *testing.T) {
 	}{
 		{
 			"allow",
-			[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			restrictedPeerCIDRs,
 			nil,
 			true,
 		},
@@ -1360,8 +1365,8 @@ func TestTurnRelay(t *testing.T) {
 		},
 		{
 			"denied-overrides-allowed",
-			[]string{"10.0.0.0/8", "192.168.0.0/16"},
-			[]string{"10.0.0.0/8", "192.168.0.0/16"},
+			restrictedPeerCIDRs,
+			restrictedPeerCIDRs,
 			false,
 		},
 	}
