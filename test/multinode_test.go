@@ -127,6 +127,7 @@ func TestMultinodeReconnectAfterNodeShutdown(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "requires direct access to the second in-process Go LiveKit node ID and shutdown")
 
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {

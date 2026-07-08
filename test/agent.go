@@ -15,7 +15,6 @@
 package test
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
@@ -45,8 +44,7 @@ type agentClient struct {
 }
 
 func newAgentClient(token string, port int) (*agentClient, error) {
-	host := fmt.Sprintf("ws://localhost:%d", port)
-	u, err := url.Parse(host + "/agent")
+	u, err := url.Parse(websocketURLForPort(port) + "/agent")
 	if err != nil {
 		return nil, err
 	}

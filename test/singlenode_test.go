@@ -225,21 +225,23 @@ func TestSinglePublisher(t *testing.T) {
 				require.True(t, strings.HasPrefix(tr.ID(), "TR_"), "track should begin with TR")
 			}
 
-			// when c3 disconnects, ensure subscriber is cleaned up correctly
+			// when c3 disconnects, ensure subscriber is cleaned up correctly.
+			// External server mode cannot inspect Go LiveKit's in-process RoomManager.
 			c3.Stop()
+			if !useExternalServer() {
+				testutils.WithTimeout(t, func() string {
+					room := s.RoomManager().GetRoom(context.Background(), testRoom)
+					p := room.GetParticipant("c1")
+					require.NotNil(t, p)
 
-			testutils.WithTimeout(t, func() string {
-				room := s.RoomManager().GetRoom(context.Background(), testRoom)
-				p := room.GetParticipant("c1")
-				require.NotNil(t, p)
-
-				for _, t := range p.GetPublishedTracks() {
-					if t.IsSubscriber(c3.ID()) {
-						return "c3 was not a subscriber of c1's tracks"
+					for _, t := range p.GetPublishedTracks() {
+						if t.IsSubscriber(c3.ID()) {
+							return "c3 was not a subscriber of c1's tracks"
+						}
 					}
-				}
-				return ""
-			})
+					return ""
+				})
+			}
 		})
 	}
 }
@@ -249,6 +251,7 @@ func TestConnectionStats(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "inspects in-process Go LiveKit receiver/downtrack stats callbacks")
 
 	s, finish := setupSingleNodeTest("TestConnectionStats")
 	defer finish()
@@ -605,10 +608,10 @@ func TestSingleNodeCORS(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	s, finish := setupSingleNodeTest("TestSingleNodeCORS")
+	_, finish := setupSingleNodeTest("TestSingleNodeCORS")
 	defer finish()
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://localhost:%d", s.HTTPPort()), nil)
+	req, err := http.NewRequest("POST", roomServiceURLForPort(defaultServerPort), nil)
 	require.NoError(t, err)
 	req.Header.Set("Authorization", "bearer xyz")
 	req.Header.Set("Origin", "testhost.com")
@@ -622,11 +625,11 @@ func TestSingleNodeDoubleSlash(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	s, finish := setupSingleNodeTest("TestSingleNodeDoubleSlash")
+	_, finish := setupSingleNodeTest("TestSingleNodeDoubleSlash")
 	defer finish()
 	// client contains trailing slash in URL, causing path to contain double //
 	// without our middleware, this would cause a 302 redirect
-	roomClient = livekit.NewRoomServiceJSONClient(fmt.Sprintf("http://localhost:%d/", s.HTTPPort()), &http.Client{})
+	roomClient = livekit.NewRoomServiceJSONClient(roomServiceURLForPort(defaultServerPort)+"/", &http.Client{})
 	_, err := roomClient.ListRooms(contextWithToken(listRoomToken()), &livekit.ListRoomsRequest{})
 	require.NoError(t, err)
 }
@@ -681,6 +684,7 @@ func TestAutoCreate(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit Room.AutoCreate configuration")
 	disableAutoCreate := func(conf *config.Config) {
 		conf.Room.AutoCreate = false
 	}
@@ -1064,6 +1068,7 @@ func TestDataPublishSlowSubscriber(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit data-channel slow-threshold configuration")
 
 	dataChannelSlowThreshold := 21024
 
@@ -1339,6 +1344,7 @@ func TestTurnRelay(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit TURN configuration")
 
 	restrictedPeerCIDRs := stringSliceFromEnvOrDefault(
 		"LK_TEST_TURN_RESTRICTED_PEER_CIDRS",
@@ -1416,6 +1422,7 @@ func TestTurnAuthFailure(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit TURN configuration")
 
 	turnUDPPort := intFromEnvOrDefault("LK_TEST_TURN_UDP_PORT", 3478)
 
@@ -1625,6 +1632,7 @@ func TestSingleNodeDataBlob(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit participant data-blob configuration")
 
 	_, finish := setupDataBlobServer(t, "TestSingleNodeDataBlob", true)
 	defer finish()
@@ -1786,6 +1794,7 @@ func TestSingleNodeDataBlobDisabled(t *testing.T) {
 		t.SkipNow()
 		return
 	}
+	skipExternalServer(t, "mutates in-process Go LiveKit participant data-blob configuration")
 
 	_, finish := setupDataBlobServer(t, "TestSingleNodeDataBlobDisabled", false)
 	defer finish()

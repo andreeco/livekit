@@ -43,11 +43,9 @@ import (
 )
 
 const (
-	testApiKey    = "apikey"
-	testApiSecret = "apiSecretExtendTo32BytesAsThatIsMinimum"
-	testRoom      = "mytestroom"
-	nodeID1       = "node-1"
-	nodeID2       = "node-2"
+	testRoom = "mytestroom"
+	nodeID1  = "node-1"
+	nodeID2  = "node-2"
 
 	syncDelay = 100 * time.Millisecond
 	// if there are deadlocks, it's helpful to set a short test timeout (i.e. go test -timeout=30s)
@@ -56,10 +54,20 @@ const (
 )
 
 var (
+	testApiKey        = stringFromEnvOrDefault("LIVEKIT_API_KEY", "apikey")
+	testApiSecret     = stringFromEnvOrDefault("LIVEKIT_API_SECRET", "apiSecretExtendTo32BytesAsThatIsMinimum")
 	defaultServerPort = intFromEnvOrDefault("LK_TEST_SERVER_PORT", 7880)
 	secondServerPort  = intFromEnvOrDefault("LK_TEST_SERVER_PORT_SECOND", 8880)
 	roomClient        livekit.RoomService
 )
+
+func stringFromEnvOrDefault(name string, fallback string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
 
 func intFromEnvOrDefault(name string, fallback int) int {
 	value := os.Getenv(name)
@@ -98,8 +106,66 @@ func init() {
 	prometheus.Init("test", livekit.NodeType_SERVER)
 }
 
+func externalServerHTTPURL() string {
+	if value := os.Getenv("LK_EXTERNAL_SERVER_URL"); value != "" {
+		return strings.TrimRight(value, "/")
+	}
+	if os.Getenv("LK_EXTERNAL_SERVER_MODE") == "true" {
+		if value := os.Getenv("LIVEKIT_URL"); value != "" {
+			return strings.TrimRight(value, "/")
+		}
+	}
+	return ""
+}
+
+func useExternalServer() bool {
+	return externalServerHTTPURL() != ""
+}
+
+func skipExternalServer(t *testing.T, reason string) {
+	t.Helper()
+	if useExternalServer() {
+		t.Skipf("external server mode uses OxideSFU instead of in-process Go LiveKit: %s", reason)
+	}
+}
+
+func externalServerWSBaseURL() string {
+	httpURL := externalServerHTTPURL()
+	if strings.HasPrefix(httpURL, "https://") {
+		return "wss://" + strings.TrimPrefix(httpURL, "https://")
+	}
+	if strings.HasPrefix(httpURL, "http://") {
+		return "ws://" + strings.TrimPrefix(httpURL, "http://")
+	}
+	if strings.HasPrefix(httpURL, "ws://") || strings.HasPrefix(httpURL, "wss://") {
+		return httpURL
+	}
+	return "ws://" + httpURL
+}
+
+func roomServiceURLForPort(port int) string {
+	if useExternalServer() {
+		return externalServerHTTPURL()
+	}
+	return fmt.Sprintf("http://localhost:%d", port)
+}
+
+func websocketURLForPort(port int) string {
+	if useExternalServer() {
+		return externalServerWSBaseURL()
+	}
+	return fmt.Sprintf("ws://localhost:%d", port)
+}
+
 func setupSingleNodeTest(name string) (*service.LivekitServer, func()) {
 	logger.Infow("----------------STARTING TEST----------------", "test", name)
+	if useExternalServer() {
+		roomClient = livekit.NewRoomServiceJSONClient(externalServerHTTPURL(), &http.Client{})
+		return nil, func() {
+			logger.Infow("----------------FINISHING TEST----------------", "test", name)
+		}
+	}
+
 	s := createSingleNodeServer(nil)
 	go func() {
 		if err := s.Start(); err != nil {
@@ -121,6 +187,13 @@ func setupMultiNodeTest(name string) (*service.LivekitServer, *service.LivekitSe
 
 func setupMultiNodeTestWithConfig(name string, configUpdater func(*config.Config)) (*service.LivekitServer, *service.LivekitServer, func()) {
 	logger.Infow("----------------STARTING TEST----------------", "test", name)
+	if useExternalServer() {
+		roomClient = livekit.NewRoomServiceJSONClient(externalServerHTTPURL(), &http.Client{})
+		return nil, nil, func() {
+			logger.Infow("----------------FINISHING TEST----------------", "test", name)
+		}
+	}
+
 	s1 := createMultiNodeServer(guid.New(nodeID1), defaultServerPort, configUpdater)
 	s2 := createMultiNodeServer(guid.New(nodeID2), secondServerPort, configUpdater)
 	go s1.Start()
@@ -229,7 +302,7 @@ func createSingleNodeServer(configUpdater func(*config.Config)) *service.Livekit
 		panic(fmt.Sprintf("could not create server: %v", err))
 	}
 
-	roomClient = livekit.NewRoomServiceJSONClient(fmt.Sprintf("http://localhost:%d", defaultServerPort), &http.Client{})
+	roomClient = livekit.NewRoomServiceJSONClient(roomServiceURLForPort(defaultServerPort), &http.Client{})
 	return s
 }
 
@@ -261,7 +334,7 @@ func createMultiNodeServer(nodeID string, port int, configUpdater func(*config.C
 		panic(fmt.Sprintf("could not create server: %v", err))
 	}
 
-	roomClient = livekit.NewRoomServiceJSONClient(fmt.Sprintf("http://localhost:%d", port), &http.Client{})
+	roomClient = livekit.NewRoomServiceJSONClient(roomServiceURLForPort(port), &http.Client{})
 	return s
 }
 
@@ -330,7 +403,7 @@ func createRTCClientWithToken(token string, port int, testRTCServicePath testRTC
 		}
 	}
 	testRTCServicePathToTestClientOptions(testRTCServicePath, opts)
-	ws, err := testclient.NewWebSocketConn(fmt.Sprintf("ws://localhost:%d", port), token, opts)
+	ws, err := testclient.NewWebSocketConn(websocketURLForPort(port), token, opts)
 	if err != nil {
 		panic(err)
 	}

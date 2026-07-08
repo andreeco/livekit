@@ -42,6 +42,7 @@ import (
 )
 
 func TestWebhooks(t *testing.T) {
+	skipExternalServer(t, "starts an in-process Go LiveKit server with injected webhook configuration")
 	server, ts, finish, err := setupServerWithWebhook()
 	require.NoError(t, err)
 	defer finish()
