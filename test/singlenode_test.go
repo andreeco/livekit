@@ -1320,21 +1320,23 @@ func TestSinglePublisherDataTrack(t *testing.T) {
 				require.True(t, strings.HasPrefix(string(tr.ID()), "DTR_"), "data track should begin with DTR")
 			}
 
-			// when c3 disconnects, ensure subscriber is cleaned up correctly
+			// when c3 disconnects, ensure subscriber is cleaned up correctly.
+			// External server mode cannot inspect Go LiveKit's in-process RoomManager.
 			c3.Stop()
+			if !useExternalServer() {
+				testutils.WithTimeout(t, func() string {
+					room := s.RoomManager().GetRoom(context.Background(), testRoom)
+					p := room.GetParticipant("c1")
+					require.NotNil(t, p)
 
-			testutils.WithTimeout(t, func() string {
-				room := s.RoomManager().GetRoom(context.Background(), testRoom)
-				p := room.GetParticipant("c1")
-				require.NotNil(t, p)
-
-				for _, t := range p.GetPublishedDataTracks() {
-					if t.IsSubscriber(c3.ID()) {
-						return "c3 was not a subscriber of c1's data tracks"
+					for _, t := range p.GetPublishedDataTracks() {
+						if t.IsSubscriber(c3.ID()) {
+							return "c3 was not a subscriber of c1's data tracks"
+						}
 					}
-				}
-				return ""
-			})
+					return ""
+				})
+			}
 		})
 	}
 }
