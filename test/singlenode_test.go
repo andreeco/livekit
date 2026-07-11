@@ -1068,26 +1068,33 @@ func TestDataPublishSlowSubscriber(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit data-channel slow-threshold configuration")
-
-	dataChannelSlowThreshold := 21024
+	dataChannelSlowThreshold := intFromEnvOrDefault(
+		"LK_EXTERNAL_DATACHANNEL_SLOW_THRESHOLD",
+		21024,
+	)
 
 	logger.Infow("----------------STARTING TEST----------------", "test", t.Name())
-	s := createSingleNodeServer(func(c *config.Config) {
-		c.RTC.DatachannelSlowThreshold = dataChannelSlowThreshold
-	})
-	go func() {
-		if err := s.Start(); err != nil {
-			logger.Errorw("server returned error", err)
-		}
-	}()
+	if useExternalServer() {
+		defer func() {
+			logger.Infow("----------------FINISHING TEST----------------", "test", t.Name())
+		}()
+	} else {
+		s := createSingleNodeServer(func(c *config.Config) {
+			c.RTC.DatachannelSlowThreshold = dataChannelSlowThreshold
+		})
+		go func() {
+			if err := s.Start(); err != nil {
+				logger.Errorw("server returned error", err)
+			}
+		}()
 
-	waitForServerToStart(s)
+		waitForServerToStart(s)
 
-	defer func() {
-		s.Stop(true)
-		logger.Infow("----------------FINISHING TEST----------------", "test", t.Name())
-	}()
+		defer func() {
+			s.Stop(true)
+			logger.Infow("----------------FINISHING TEST----------------", "test", t.Name())
+		}()
+	}
 
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
