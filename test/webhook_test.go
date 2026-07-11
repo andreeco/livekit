@@ -42,7 +42,6 @@ import (
 )
 
 func TestWebhooks(t *testing.T) {
-	skipExternalServer(t, "starts an in-process Go LiveKit server with injected webhook configuration")
 	server, ts, finish, err := setupServerWithWebhook()
 	require.NoError(t, err)
 	defer finish()
@@ -112,8 +111,15 @@ func TestWebhooks(t *testing.T) {
 			ts.ClearEvents()
 
 			// room closed
-			rm := server.RoomManager().GetRoom(context.Background(), testRoom)
-			rm.Close(types.ParticipantCloseReasonNone)
+			if useExternalServer() {
+				_, err := roomClient.DeleteRoom(contextWithToken(createRoomToken()), &livekit.DeleteRoomRequest{
+					Room: testRoom,
+				})
+				require.NoError(t, err)
+			} else {
+				rm := server.RoomManager().GetRoom(context.Background(), testRoom)
+				rm.Close(types.ParticipantCloseReasonNone)
+			}
 			testutils.WithTimeout(t, func() string {
 				if ts.GetEvent(webhook.EventRoomFinished) == nil {
 					return "did not receive RoomFinished"
@@ -126,22 +132,27 @@ func TestWebhooks(t *testing.T) {
 }
 
 func setupServerWithWebhook() (server *service.LivekitServer, testServer *webhookTestServer, finishFunc func(), err error) {
+	webhookPort := intFromEnvOrDefault("LK_TEST_WEBHOOK_PORT", 7890)
+	testServer = newTestServer(fmt.Sprintf(":%d", webhookPort))
+	if err = testServer.Start(); err != nil {
+		return
+	}
+
+	if useExternalServer() {
+		roomClient = livekit.NewRoomServiceJSONClient(externalServerHTTPURL(), &http.Client{})
+		return nil, testServer, testServer.Stop, nil
+	}
+
 	conf, err := config.NewConfig("", true, nil, nil)
 	if err != nil {
 		panic(fmt.Sprintf("could not create config: %v", err))
 	}
-	webhookPort := intFromEnvOrDefault("LK_TEST_WEBHOOK_PORT", 7890)
 	conf.Port = uint32(defaultServerPort)
 	conf.RTC.UDPPort = rtcconfig.PortRange{Start: defaultServerPort + 1}
 	conf.RTC.TCPPort = uint32(defaultServerPort + 2)
 	conf.WebHook.URLs = []string{fmt.Sprintf("http://localhost:%d", webhookPort)}
 	conf.WebHook.APIKey = testApiKey
 	conf.Keys = map[string]string{testApiKey: testApiSecret}
-
-	testServer = newTestServer(fmt.Sprintf(":%d", webhookPort))
-	if err = testServer.Start(); err != nil {
-		return
-	}
 
 	currentNode, err := routing.NewLocalNode(conf)
 	if err != nil {

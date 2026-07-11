@@ -122,13 +122,6 @@ func useExternalServer() bool {
 	return externalServerHTTPURL() != ""
 }
 
-func skipExternalServer(t *testing.T, reason string) {
-	t.Helper()
-	if useExternalServer() {
-		t.Skipf("external server mode uses OxideSFU instead of in-process Go LiveKit: %s", reason)
-	}
-}
-
 func externalServerWSBaseURL() string {
 	httpURL := externalServerHTTPURL()
 	if strings.HasPrefix(httpURL, "https://") {

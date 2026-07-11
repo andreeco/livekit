@@ -127,18 +127,19 @@ func TestMultinodeReconnectAfterNodeShutdown(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "requires direct access to the second in-process Go LiveKit node ID and shutdown")
-
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			_, s2, finish := setupMultiNodeTest("TestMultinodeReconnectAfterNodeShutdown")
 			defer finish()
 
-			// creating room on node 1
-			_, err := roomClient.CreateRoom(contextWithToken(createRoomToken()), &livekit.CreateRoomRequest{
-				Name:   testRoom,
-				NodeId: s2.Node().Id,
-			})
+			// External mode cannot select or terminate an implementation node. It
+			// still exercises reconnecting a closed client through the external
+			// server; the in-process branch retains the node-shutdown assertion.
+			createRequest := &livekit.CreateRoomRequest{Name: testRoom}
+			if !useExternalServer() {
+				createRequest.NodeId = s2.Node().Id
+			}
+			_, err := roomClient.CreateRoom(contextWithToken(createRoomToken()), createRequest)
 			require.NoError(t, err)
 
 			// one node connecting to node 1, and another connecting to node 2
@@ -148,8 +149,11 @@ func TestMultinodeReconnectAfterNodeShutdown(t *testing.T) {
 			waitUntilConnected(t, c1, c2)
 			stopClients(c1, c2)
 
-			// stop s2, and connect to room again
-			s2.Stop(true)
+			// Stop the owning node in-process. The external runner does not own
+			// the target process, so it reconnects after client shutdown instead.
+			if !useExternalServer() {
+				s2.Stop(true)
+			}
 
 			time.Sleep(syncDelay)
 

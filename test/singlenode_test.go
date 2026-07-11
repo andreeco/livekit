@@ -251,8 +251,6 @@ func TestConnectionStats(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "inspects in-process Go LiveKit receiver/downtrack stats callbacks")
-
 	s, finish := setupSingleNodeTest("TestConnectionStats")
 	defer finish()
 
@@ -291,6 +289,13 @@ func TestConnectionStats(t *testing.T) {
 				}
 				return ""
 			})
+
+			if useExternalServer() {
+				// The receiver/downtrack callbacks below are Go LiveKit internals. The
+				// external path has already exercised the observable contract: both
+				// clients publish and subscribe to media from the other client.
+				return
+			}
 
 			room := s.RoomManager().GetRoom(context.Background(), testRoom)
 			require.NotNil(t, room)
@@ -684,20 +689,24 @@ func TestAutoCreate(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit Room.AutoCreate configuration")
 	disableAutoCreate := func(conf *config.Config) {
 		conf.Room.AutoCreate = false
 	}
 	t.Run("cannot join if room isn't created", func(t *testing.T) {
-		s := createSingleNodeServer(disableAutoCreate)
-		go func() {
-			if err := s.Start(); err != nil {
-				logger.Errorw("server returned error", err)
-			}
-		}()
-		defer s.Stop(true)
+		if useExternalServer() {
+			_, finish := setupSingleNodeTest("TestAutoCreate/cannot join if room isn't created")
+			defer finish()
+		} else {
+			s := createSingleNodeServer(disableAutoCreate)
+			go func() {
+				if err := s.Start(); err != nil {
+					logger.Errorw("server returned error", err)
+				}
+			}()
+			defer s.Stop(true)
 
-		waitForServerToStart(s)
+			waitForServerToStart(s)
+		}
 
 		for _, testRTCServicePath := range testRTCServicePaths {
 			t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
@@ -705,7 +714,7 @@ func TestAutoCreate(t *testing.T) {
 				opts := &testclient.Options{}
 				testRTCServicePathToTestClientOptions(testRTCServicePath, opts)
 				_, err := testclient.NewWebSocketConn(
-					fmt.Sprintf("ws://localhost:%d", defaultServerPort),
+					websocketURLForPort(defaultServerPort),
 					token,
 					opts,
 				)
@@ -714,7 +723,7 @@ func TestAutoCreate(t *testing.T) {
 				// second join should also fail
 				token = joinToken(testRoom, "start-before-create-2", nil)
 				_, err = testclient.NewWebSocketConn(
-					fmt.Sprintf("ws://localhost:%d", defaultServerPort),
+					websocketURLForPort(defaultServerPort),
 					token,
 					opts,
 				)
@@ -724,15 +733,20 @@ func TestAutoCreate(t *testing.T) {
 	})
 
 	t.Run("join with explicit createRoom", func(t *testing.T) {
-		s := createSingleNodeServer(disableAutoCreate)
-		go func() {
-			if err := s.Start(); err != nil {
-				logger.Errorw("server returned error", err)
-			}
-		}()
-		defer s.Stop(true)
+		if useExternalServer() {
+			_, finish := setupSingleNodeTest("TestAutoCreate/join with explicit createRoom")
+			defer finish()
+		} else {
+			s := createSingleNodeServer(disableAutoCreate)
+			go func() {
+				if err := s.Start(); err != nil {
+					logger.Errorw("server returned error", err)
+				}
+			}()
+			defer s.Stop(true)
 
-		waitForServerToStart(s)
+			waitForServerToStart(s)
+		}
 
 		// explicitly create
 		_, err := roomClient.CreateRoom(contextWithToken(createRoomToken()), &livekit.CreateRoomRequest{Name: testRoom})
@@ -1353,8 +1367,6 @@ func TestTurnRelay(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit TURN configuration")
-
 	restrictedPeerCIDRs := stringSliceFromEnvOrDefault(
 		"LK_TEST_TURN_RESTRICTED_PEER_CIDRS",
 		[]string{"10.0.0.0/8", "192.168.0.0/16"},
@@ -1389,20 +1401,25 @@ func TestTurnRelay(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			turnUDPPort := intFromEnvOrDefault("LK_TEST_TURN_UDP_PORT", 3478)
-			s := createSingleNodeServer(func(c *config.Config) {
-				c.TURN.Enabled = true
-				c.TURN.UDPPort = turnUDPPort
-				c.TURN.AllowRestrictedPeerCIDRs = tc.allowRestrictedPeerCIDRs
-				c.TURN.DenyPeerCIDRs = tc.denyPeerCIDRs
-			})
-			go func() {
-				if err := s.Start(); err != nil {
-					logger.Errorw("server returned error", err)
-				}
-			}()
-			defer s.Stop(true)
+			if useExternalServer() {
+				_, finish := setupSingleNodeTest("TestTurnRelay/" + tc.name)
+				defer finish()
+			} else {
+				s := createSingleNodeServer(func(c *config.Config) {
+					c.TURN.Enabled = true
+					c.TURN.UDPPort = turnUDPPort
+					c.TURN.AllowRestrictedPeerCIDRs = tc.allowRestrictedPeerCIDRs
+					c.TURN.DenyPeerCIDRs = tc.denyPeerCIDRs
+				})
+				go func() {
+					if err := s.Start(); err != nil {
+						logger.Errorw("server returned error", err)
+					}
+				}()
+				defer s.Stop(true)
 
-			waitForServerToStart(s)
+				waitForServerToStart(s)
+			}
 
 			c1 := createRTCClient("relay_c1", defaultServerPort, testRTCServicePathv0, &testclient.Options{
 				AutoSubscribe: true,
@@ -1431,22 +1448,24 @@ func TestTurnAuthFailure(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit TURN configuration")
-
 	turnUDPPort := intFromEnvOrDefault("LK_TEST_TURN_UDP_PORT", 3478)
+	if useExternalServer() {
+		_, finish := setupSingleNodeTest("TestTurnAuthFailure")
+		defer finish()
+	} else {
+		s := createSingleNodeServer(func(c *config.Config) {
+			c.TURN.Enabled = true
+			c.TURN.UDPPort = turnUDPPort
+		})
+		go func() {
+			if err := s.Start(); err != nil {
+				logger.Errorw("server returned error", err)
+			}
+		}()
+		defer s.Stop(true)
 
-	s := createSingleNodeServer(func(c *config.Config) {
-		c.TURN.Enabled = true
-		c.TURN.UDPPort = turnUDPPort
-	})
-	go func() {
-		if err := s.Start(); err != nil {
-			logger.Errorw("server returned error", err)
-		}
-	}()
-	defer s.Stop(true)
-
-	waitForServerToStart(s)
+		waitForServerToStart(s)
+	}
 
 	// build a known-good username/password pair so individual cases can mutate
 	// only the part they are exercising.
@@ -1619,6 +1638,10 @@ func (c *dataBlobCapture) requestResponseCount() int {
 }
 
 func setupDataBlobServer(t *testing.T, name string, enable bool) (*service.LivekitServer, func()) {
+	if useExternalServer() {
+		return setupSingleNodeTest(name)
+	}
+
 	logger.Infow("----------------STARTING TEST----------------", "test", name)
 	s := createSingleNodeServer(func(c *config.Config) {
 		c.EnableParticipantDataBlob = enable
@@ -1641,8 +1664,6 @@ func TestSingleNodeDataBlob(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit participant data-blob configuration")
-
 	_, finish := setupDataBlobServer(t, "TestSingleNodeDataBlob", true)
 	defer finish()
 
@@ -1803,8 +1824,6 @@ func TestSingleNodeDataBlobDisabled(t *testing.T) {
 		t.SkipNow()
 		return
 	}
-	skipExternalServer(t, "mutates in-process Go LiveKit participant data-blob configuration")
-
 	_, finish := setupDataBlobServer(t, "TestSingleNodeDataBlobDisabled", false)
 	defer finish()
 

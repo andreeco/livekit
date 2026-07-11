@@ -32,7 +32,6 @@ var (
 )
 
 func TestAgents(t *testing.T) {
-	skipExternalServer(t, "uses LiveKit agent websocket/job-assignment internals")
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			_, finish := setupSingleNodeTest("TestAgents")
@@ -127,7 +126,6 @@ func TestAgents(t *testing.T) {
 }
 
 func TestAgentNamespaces(t *testing.T) {
-	skipExternalServer(t, "uses LiveKit agent websocket/job-assignment internals")
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			_, finish := setupSingleNodeTest("TestAgentNamespaces")
@@ -190,7 +188,6 @@ func TestAgentNamespaces(t *testing.T) {
 }
 
 func TestAgentMultiNode(t *testing.T) {
-	skipExternalServer(t, "uses LiveKit agent websocket/job-assignment and multi-node internals")
 	for _, testRTCServicePath := range testRTCServicePaths {
 		t.Run(fmt.Sprintf("testRTCServicePath=%s", testRTCServicePath.String()), func(t *testing.T) {
 			_, _, finish := setupMultiNodeTest("TestAgentMultiNode")
